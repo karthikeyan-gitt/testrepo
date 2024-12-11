@@ -1,0 +1,36 @@
+tage('clone Repository') {
+     git 'https://github.com/karthikeyan-gitt/maven-web-app.git'
+ }
+ 
+  stage('maven Build generation') {
+     def mavenHome = tool name: "maven-3.8.6", type: "maven"
+     def mavenCMD = "${mavenHome}/bin/mvn"
+     sh "${mavenCMD} clean package"
+ }
+  stage("Sonar Scannar") {
+     withSonarQubeEnv('sonar-server') {
+       def mavenHome = tool name: "maven-3.8.6", type: "maven"
+       def mavenCMD = "${mavenHome}/bin/mvn"
+       sh "${mavenCMD} sonar:sonar"
+
+         
+     }
+ }
+  stage("Upload Artifact") {
+     nexusArtifactUploader artifacts: [[artifactId: 'kubewar', classifier: '', file: 'target/01-maven-web-app.war', type: 'war']], credentialsId: 'nexus-cred', groupId: '23', nexusUrl: '3.110.142.255:8081', nexusVersion: 'nexus3', protocol: 'http', repository: 'kubewar', version: 'v1'
+ }
+ 
+  stage("Build and push docker image") {
+      withDockerRegistry(credentialsId: 'dockerhub', toolName: 'docker') {
+
+        sh 'docker build -t karthikeyangitt/tomcatimage:$BUILD_ID .'
+        sh 'docker push karthikeyangitt/tomcatimage:$BUILD_ID'
+ }
+ }
+   stage("Build and Deploy") {
+     sh 'sed -i "s/{{BUILD_NUMBER}}/' + BUILD_NUMBER + '/g" maven-web-app-deploy.yml'
+     sh 'whoami'
+     sh 'aws eks --region ap-south-1 update-kubeconfig --name my-eks-cluster'
+     sh 'kubectl apply -f maven-web-app-deploy.yml --kubeconfig=/var/lib/jenkins/.kube/config'
+  }
+ }
